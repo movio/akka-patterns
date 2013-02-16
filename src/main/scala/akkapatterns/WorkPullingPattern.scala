@@ -1,0 +1,72 @@
+package akkapatterns
+
+import akka.actor.Actor
+import scala.collection.mutable
+import akka.actor.ActorRef
+import WorkPullingPattern._
+import scala.collection.IterableLike
+import scala.reflect.ClassTag
+import org.slf4j.LoggerFactory
+
+object WorkPullingPattern {
+  sealed trait Message
+  trait Epic[T] extends Iterable[T] //used by master to create work (in a streaming way)
+  case object GimmeWork extends Message
+  case object CurrentlyBusy extends Message
+  case object WorkAvailable extends Message
+  case class RegisterWorker(worker: ActorRef) extends Message
+  case class Work[T](work: T) extends Message
+}
+
+class Master[T] extends Actor {
+  val log = LoggerFactory.getLogger(getClass)
+  val workers = mutable.Set.empty[ActorRef]
+  var currentEpic: Option[Epic[T]] = None
+
+  def receive = {
+    case epic: Epic[T] ⇒
+      if (currentEpic.isDefined)
+        sender ! CurrentlyBusy
+      else if (workers.isEmpty)
+        log.error("Got work but there are no workers registered.")
+      else {
+        currentEpic = Some(epic)
+        workers foreach { _ ! WorkAvailable }
+      }
+
+    case RegisterWorker(worker) ⇒ workers += worker
+
+    case GimmeWork ⇒ currentEpic match {
+      case None ⇒
+        log.info("workers asked for work but we've no more work to do")
+      case Some(epic) ⇒
+        val iter = epic.iterator
+        if (iter.hasNext)
+          sender ! Work(iter.next)
+        else {
+          log.info(s"done with current epic $epic")
+          currentEpic = None
+        }
+    }
+  }
+}
+
+abstract class Worker[T](val master: ActorRef) extends Actor {
+
+  override def preStart {
+    master ! RegisterWorker(self)
+    master ! GimmeWork
+  }
+
+  def receive = {
+    case WorkAvailable ⇒
+      master ! GimmeWork
+    case Work(work: T) ⇒
+      // haven't found a nice way to get rid of that warning
+      // looks like we can't suppress the erasure warning: http://stackoverflow.com/questions/3506370/is-there-an-equivalent-to-suppresswarnings-in-scala
+      doWork(work)
+      master ! GimmeWork
+  }
+
+  def doWork(work: T)
+}
