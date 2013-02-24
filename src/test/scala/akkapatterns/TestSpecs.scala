@@ -40,6 +40,20 @@ abstract class AkkaSpec extends TestKit(ActorSystem("AkkaTestSystem"))
   }))
   system.eventStream.subscribe(listener, classOf[DeadLetter])
   system.eventStream.subscribe(listener, classOf[UnhandledMessage])
+
+  def time(func: ⇒ Unit): Duration = {
+    val start = System.currentTimeMillis
+    func
+    val millis = System.currentTimeMillis - start
+    Duration(millis, MILLISECONDS)
+  }
+
+  def maxMillis(maxMillis: Long)(func: ⇒ Unit) {
+    val start = System.currentTimeMillis
+    func
+    val millis = System.currentTimeMillis - start
+    millis should be < (maxMillis)
+  }
 }
 
 trait MovioMatchers {
