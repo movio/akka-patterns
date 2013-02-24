@@ -9,6 +9,7 @@ import scala.concurrent.duration._
 import akka.actor.ActorRef
 import akka.actor.Actor
 import org.slf4j.Logger
+import akka.actor.PoisonPill
 
 class WorkPullingPatternSpec extends AkkaSpec {
   val logger = mock[Logger]
@@ -81,6 +82,17 @@ class WorkPullingPatternSpec extends AkkaSpec {
       master ! GimmeWork
       expectMsg(Work(someWork))
     }
+
+    it("forgets about workers who died") {
+      val master = newMaster
+      val worker = TestProbe()
+      master ! RegisterWorker(worker.ref)
+      master.underlyingActor.workers.size should be(1)
+    
+      worker.ref ! PoisonPill
+      master.underlyingActor.workers.size should be(0)
+    }
+
 
   }
 

@@ -7,6 +7,7 @@ import WorkPullingPattern._
 import scala.collection.IterableLike
 import scala.reflect.ClassTag
 import org.slf4j.LoggerFactory
+import akka.actor.Terminated
 
 object WorkPullingPattern {
   sealed trait Message
@@ -34,7 +35,14 @@ class Master[T] extends Actor {
         workers foreach { _ ! WorkAvailable }
       }
 
-    case RegisterWorker(worker) ⇒ workers += worker
+    case RegisterWorker(worker) ⇒
+      log.info(s"worker $worker registered")
+      context.watch(worker)
+      workers += worker
+
+    case Terminated(worker) ⇒
+      log.info(s"worker $worker died - taking off the set of workers")
+      workers.remove(worker)
 
     case GimmeWork ⇒ currentEpic match {
       case None ⇒
